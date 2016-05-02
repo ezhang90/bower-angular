@@ -4891,6 +4891,9 @@ function Browser(window, document, $log, $sniffer) {
   self.$$completeOutstandingRequest = completeOutstandingRequest;
   self.$$incOutstandingRequestCount = function() { outstandingRequestCount++; };
 
+  self.getOutstandingRequestCount = function() { return outstandingRequestCount; };
+  self.getOutstandingRequestCallbacks = function() { return outstandingRequestCallbacks; };
+
   /**
    * Executes the `fn` function(supports currying) and decrements the `outstandingRequestCallbacks`
    * counter. If the counter reaches 0, all the `outstandingRequestCallbacks` are executed.
