@@ -4927,22 +4927,51 @@ function Browser(window, document, $log, $sniffer) {
   var outstandingRequestCount = 0;
   var outstandingRequestCallbacks = [];
 
+  var outstandingDeferHash = {};
+  var outstandingHttpBackendRequests = [];
+
   // TODO(vojta): remove this temporary api
   self.$$completeOutstandingRequest = completeOutstandingRequest;
-  self.$$incOutstandingRequestCount = function() { outstandingRequestCount++; };
+  // options contains either deferId and an fnString, or just httpBackendRequestInfo
+  self.$$incOutstandingRequestCount = function(options) {
+    if (options.deferId) {
+      outstandingDeferHash[options.deferId] = options.fnString;
+    } else if (options.httpBackendRequestInfo) {
+      outstandingHttpBackendRequests.push(options.httpBackendRequestInfo);
+    }
+    outstandingRequestCount++;
+  };
 
   self.getOutstandingRequestCount = function() { return outstandingRequestCount; };
-  self.getOutstandingRequestCallbacks = function() { return outstandingRequestCallbacks; };
+  self.getOutstandingRequestInfo = function() {
+    var outstandingDefers = [];
+    Object.keys(outstandingDeferHash).forEach(function(deferId) {
+      outstandingDefers.push(outstandingDeferHash[deferId]);
+    });
+    var outstandingDeferInfo = "outstanding defer info: " + outstandingDefers.join(', ') + '\n';
+
+    var outstandingHttpBackendRequestsInfo = "outstanding http backend requests info: " + outstandingHttpBackendRequests.join(', ') + '\n';
+
+    return outstandingDeferInfo + outstandingHttpBackendRequestsInfo;
+  };
 
   /**
    * Executes the `fn` function(supports currying) and decrements the `outstandingRequestCallbacks`
    * counter. If the counter reaches 0, all the `outstandingRequestCallbacks` are executed.
    */
-  function completeOutstandingRequest(fn) {
+  function completeOutstandingRequest(options) {
     try {
-      fn.apply(null, sliceArgs(arguments, 1));
+      options.fn.apply(null, sliceArgs(arguments, 1));
     } finally {
       outstandingRequestCount--;
+      if (options.deferId) {
+        delete outstandingDeferHash[options.deferId];
+      } else if (options.httpBackendRequestInfo) {
+        var httpBackendRequestInfoIndex = outstandingHttpBackendRequests.indexOf(options.httpBackendRequestInfo);
+        if (~httpBackendRequestInfoIndex) {
+          outstandingHttpBackendRequests.splice(httpBackendRequestInfoIndex, 1);
+        }
+      }
       if (outstandingRequestCount === 0) {
         while (outstandingRequestCallbacks.length) {
           try {
@@ -5325,11 +5354,17 @@ function Browser(window, document, $log, $sniffer) {
    */
   self.defer = function(fn, delay) {
     var timeoutId;
-    outstandingRequestCount++;
     timeoutId = setTimeout(function() {
       delete pendingDeferIds[timeoutId];
-      completeOutstandingRequest(fn);
+      completeOutstandingRequest({
+        fn: fn,
+        deferId: timeoutId
+      });
     }, delay || 0);
+    self.$$incOutstandingRequestCount({
+      deferId: timeoutId,
+      fnString: fn && fn.toString()
+    });
     pendingDeferIds[timeoutId] = true;
     return timeoutId;
   };
@@ -5349,7 +5384,10 @@ function Browser(window, document, $log, $sniffer) {
     if (pendingDeferIds[deferId]) {
       delete pendingDeferIds[deferId];
       clearTimeout(deferId);
-      completeOutstandingRequest(noop);
+      completeOutstandingRequest({
+        fn: noop,
+        deferId: deferId
+      });
       return true;
     }
     return false;
@@ -9822,7 +9860,10 @@ function $HttpBackendProvider() {
 function createHttpBackend($browser, createXhr, $browserDefer, callbacks, rawDocument) {
   // TODO(vojta): fix the signature
   return function(method, url, post, callback, headers, timeout, withCredentials, responseType) {
-    $browser.$$incOutstandingRequestCount();
+    var debugInfo = [method, url, post].toString();
+    $browser.$$incOutstandingRequestCount({
+      httpBackendRequestInfo: debugInfo
+    });
     url = url || $browser.url();
 
     if (lowercase(method) == 'jsonp') {
@@ -9925,7 +9966,10 @@ function createHttpBackend($browser, createXhr, $browserDefer, callbacks, rawDoc
       jsonpDone = xhr = null;
 
       callback(status, response, headersString, statusText);
-      $browser.$$completeOutstandingRequest(noop);
+      $browser.$$completeOutstandingRequest({
+        fn: noop,
+        httpBackendRequestInfo: debugInfo
+      });
     }
   };
 
