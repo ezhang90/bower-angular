@@ -4950,6 +4950,7 @@ function Browser(window, document, $log, $sniffer) {
   };
 
   self.getOutstandingRequestCount = function() { return outstandingRequestCount; };
+  self.getOutstandingRequestCallbacks = function() { return outstandingRequestCallbacks; };
   self.getOutstandingRequestInfo = function() {
     var outstandingDefers = [];
     Object.keys(outstandingDeferHash).forEach(function(deferId) {
