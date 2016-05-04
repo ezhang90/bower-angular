@@ -4935,7 +4935,14 @@ function Browser(window, document, $log, $sniffer) {
   // options contains either deferId and an fnString, or just httpBackendRequestInfo
   self.$$incOutstandingRequestCount = function(options) {
     if (options.deferId) {
-      outstandingDeferHash[options.deferId] = options.fnString;
+      var stacktrace = "";
+      try {
+        throw new Error("get a stack trace");
+      } catch (e) {
+        stacktrace = e.stack;
+      }
+
+      outstandingDeferHash[options.deferId] = "" + options.fnString + ', stacktrace: ' + stacktrace;
     } else if (options.httpBackendRequestInfo) {
       outstandingHttpBackendRequests.push(options.httpBackendRequestInfo);
     }
